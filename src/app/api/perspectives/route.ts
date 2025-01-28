@@ -13,7 +13,22 @@ interface PerplexityResponse {
   }[]
 }
 
-async function getViewpoint(query: string, viewpoint: string) {
+interface Argument {
+  summary: string
+  detail: string
+}
+
+interface ParsedResponse {
+  title: string
+  description: string
+  arguments: Argument[]
+  citations?: {
+    url?: string
+    title: string
+  }[]
+}
+
+async function getViewpoint(query: string, viewpoint: string = "moderate") {
   try {
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
@@ -27,27 +42,22 @@ async function getViewpoint(query: string, viewpoint: string) {
         messages: [
           {
             role: "system",
-            content: `You are an expert at analyzing topics from different perspectives. For the given query, provide a detailed ${viewpoint} perspective with supporting evidence.
-
-For each argument:
-1. First provide a concise 5-7 word summary
-2. Then provide a detailed explanation (2-3 sentences)
-3. End with a citation reference [1], [2], etc.
+            content: `You are an expert at analyzing topics from different perspectives. For the given query, provide a ${viewpoint} perspective with supporting evidence.
 
 Format the response as JSON with this structure:
 {
-  "title": "string",
-  "description": "string",
+  "title": "Brief topic title",
+  "description": "2-3 sentence overview",
   "arguments": [
     {
-      "summary": "5-7 word summary here",
-      "detail": "Detailed explanation with citation [1]"
+      "summary": "5-7 word summary of the point",
+      "detail": "2-3 sentence explanation with citation [1]"
     }
   ],
   "citations": [
     {
-      "url": "string",
-      "title": "string"
+      "url": "source URL",
+      "title": "source title"
     }
   ]
 }`
@@ -60,7 +70,8 @@ Format the response as JSON with this structure:
         temperature: 0.2,
         max_tokens: 1024,
         presence_penalty: 0,
-        frequency_penalty: 0.5
+        frequency_penalty: 0.5,
+        return_citations: true
       }),
     })
 
@@ -71,59 +82,100 @@ Format the response as JSON with this structure:
     }
 
     const data = (await response.json()) as PerplexityResponse
+    console.log("Raw API response:", JSON.stringify(data, null, 2))
+    
     const content = data.choices[0].message.content
+    console.log("Raw content string:", content)
     
     try {
-      const parsedData = JSON.parse(content)
+      // Try to clean the content string if needed
+      const cleanContent = content.trim()
+      console.log("Attempting to parse:", cleanContent)
+      
+      const parsedData = JSON.parse(cleanContent) as ParsedResponse
+      console.log("Successfully parsed data:", JSON.stringify(parsedData, null, 2))
+      
+      // Validate the parsed data has the required structure
+      if (!parsedData.title || !parsedData.description || !Array.isArray(parsedData.arguments)) {
+        console.error("Invalid data structure:", parsedData)
+        throw new Error("Missing required fields in response")
+      }
+      
+      // Ensure the response has the required structure
       return {
-        ...parsedData,
+        title: parsedData.title,
+        description: parsedData.description,
+        arguments: parsedData.arguments.map((arg: Argument) => ({
+          summary: arg.summary || "",
+          detail: arg.detail || ""
+        })),
+        citations: [
+          ...(parsedData.citations || []),
+          ...(data.citations || [])
+        ].filter(citation => citation.title || citation.url),
         viewpoint
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error parsing JSON response:', error)
-      throw new Error('Invalid response format from API')
+      console.error('Content that failed to parse:', content)
+      throw new Error(`Invalid response format from API: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error in getViewpoint:", error)
-    throw error
+    throw error instanceof Error ? error : new Error('Unknown error in getViewpoint')
   }
 }
 
-export async function POST(request: Request) {
-  if (!process.env.PERPLEXITY_API_KEY) {
-    return NextResponse.json(
-      { error: "Perplexity API key is not configured" },
-      { status: 500 }
-    )
-  }
-
+export async function POST(req: Request) {
   try {
-    const { query } = await request.json()
+    const { query, mode, articleContent } = await req.json()
 
-    if (!query?.trim()) {
+    if (mode === "news" && !articleContent) {
       return NextResponse.json(
-        { error: "Query is required" },
+        { error: "Article content is required for news analysis" },
         { status: 400 }
       )
     }
 
-    const [progressive, moderate, conservative] = await Promise.all([
-      getViewpoint(query, "Progressive"),
-      getViewpoint(query, "Moderate"),
-      getViewpoint(query, "Conservative"),
-    ])
+    if (mode === "search" && !query) {
+      return NextResponse.json(
+        { error: "Query is required for search" },
+        { status: 400 }
+      )
+    }
 
-    return NextResponse.json({
-      perspectives: {
-        progressive,
-        moderate,
-        conservative,
-      },
-    })
-  } catch (error) {
-    console.error("Error processing request:", error)
+    // For news mode, analyze the article content
+    const prompt = mode === "news" 
+      ? `Analyze this article and provide different perspectives on the topic. Focus on identifying and explaining various viewpoints, potential biases, and alternative interpretations. Here's the article content:\n\n${articleContent}`
+      : query
+
+    try {
+      // Get all perspectives in parallel
+      const [progressive, moderate, conservative] = await Promise.all([
+        getViewpoint(prompt, "progressive"),
+        getViewpoint(prompt, "moderate"),
+        getViewpoint(prompt, "conservative")
+      ])
+
+      return NextResponse.json({
+        perspectives: {
+          progressive,
+          moderate,
+          conservative
+        }
+      })
+    } catch (error: unknown) {
+      console.error("Error getting perspectives:", error)
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Failed to get perspectives" },
+        { status: 500 }
+      )
+    }
+
+  } catch (error: unknown) {
+    console.error("Error in perspectives route:", error)
     return NextResponse.json(
-      { error: "Failed to fetch perspectives" },
+      { error: "Failed to analyze content" },
       { status: 500 }
     )
   }
