@@ -6,6 +6,8 @@ import { X, GripVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import ReactMarkdown from "react-markdown"
 import { AuthorInfo } from "@/components/author-info"
+import { InvestigationTiles } from "@/components/investigation-tiles"
+import { ArticleChat } from "@/components/article-chat"
 
 interface SplitViewProps {
   title: string
@@ -31,6 +33,7 @@ interface SplitViewProps {
 export function SplitView({ title, content, onClose, rightPanel, authorInfo }: SplitViewProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [splitPosition, setSplitPosition] = useState(50) // percentage
+  const [selectedAction, setSelectedAction] = useState<string | null>(null)
 
   const handleMouseDown = useCallback(() => {
     setIsDragging(true)
@@ -53,6 +56,14 @@ export function SplitView({ title, content, onClose, rightPanel, authorInfo }: S
     setIsDragging(false)
   }, [])
 
+  const handleTileClick = useCallback((action: string) => {
+    setSelectedAction(action)
+  }, [])
+
+  const handleBackClick = useCallback(() => {
+    setSelectedAction(null)
+  }, [])
+
   useEffect(() => {
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove)
@@ -64,6 +75,41 @@ export function SplitView({ title, content, onClose, rightPanel, authorInfo }: S
       window.removeEventListener('mouseup', handleMouseUp)
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
+
+  const renderActionContent = () => {
+    switch (selectedAction) {
+      case 'explore':
+        return rightPanel || (
+          <div className="h-full flex items-center justify-center text-neutral-400">
+            Spectrum analysis not available
+          </div>
+        )
+      case 'involved':
+        return (
+          <div className="h-full flex items-center justify-center text-neutral-400">
+            Who's involved view coming soon
+          </div>
+        )
+      case 'author':
+        return authorInfo ? (
+          <div className="h-full overflow-y-auto">
+            <AuthorInfo authorInfo={authorInfo} />
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center text-neutral-400">
+            Author information not available
+          </div>
+        )
+      case 'questions':
+        return (
+          <div className="h-full">
+            <ArticleChat articleContent={content} articleTitle={title} />
+          </div>
+        )
+      default:
+        return null
+    }
+  }
 
   return (
     <motion.div
@@ -99,7 +145,6 @@ export function SplitView({ title, content, onClose, rightPanel, authorInfo }: S
             <h1 className="text-2xl sm:text-3xl font-semibold text-white">
               {title}
             </h1>
-            {authorInfo && <AuthorInfo authorInfo={authorInfo} />}
             <div className="prose prose-invert prose-lg max-w-none [&>p]:mb-6 [&>h1]:mt-8 [&>h2]:mt-6 [&>h3]:mt-4">
               <ReactMarkdown>{content}</ReactMarkdown>
             </div>
@@ -127,9 +172,22 @@ export function SplitView({ title, content, onClose, rightPanel, authorInfo }: S
           className="h-full overflow-y-auto p-6 pt-16"
           style={{ width: `${100 - splitPosition}%` }}
         >
-          {rightPanel || (
-            <div className="h-full flex items-center justify-center text-neutral-400">
-              Additional content will appear here
+          {!selectedAction ? (
+            <div className="h-full flex items-center justify-center">
+              <InvestigationTiles onTileClick={handleTileClick} />
+            </div>
+          ) : (
+            <div className="h-full">
+              <div className="mb-4">
+                <Button
+                  variant="ghost"
+                  onClick={handleBackClick}
+                  className="text-neutral-400 hover:text-white"
+                >
+                  ← Back to control center
+                </Button>
+              </div>
+              {renderActionContent()}
             </div>
           )}
         </div>

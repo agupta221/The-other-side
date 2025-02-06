@@ -81,60 +81,73 @@ export default function ChatInterface() {
         const articleData = await scrapeResponse.json()
 
         // Run article formatting, analysis, and author info in parallel
-        const [formattedArticle, analysisResponse, authorResponse] = await Promise.all([
-          // Format article with OpenAI
-          fetch("/api/format", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ content: articleData.content }),
-          }).then(async res => {
-            if (!res.ok) {
-              const errorData = await res.json()
-              throw new Error(errorData.error || "Failed to format article")
+        try {
+          const [formattedArticle, analysisResponse] = await Promise.all([
+            // Format article with OpenAI
+            fetch("/api/format", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ content: articleData.content }),
+            }).then(async res => {
+              if (!res.ok) {
+                const errorData = await res.json()
+                throw new Error(errorData.error || "Failed to format article")
+              }
+              return res.json()
+            }),
+
+            // Analyze article with Perplexity
+            fetch("/api/perspectives", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ 
+                mode: "news",
+                articleContent: articleData.content 
+              }),
+            }).then(res => {
+              if (!res.ok) throw new Error("Failed to analyze article")
+              return res.json()
+            })
+          ])
+
+          // Try to get author information, but don't fail if it errors
+          let authorInfo = null
+          try {
+            const authorResponse = await fetch("/api/author", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ 
+                articleContent: articleData.content 
+              }),
+            })
+            if (authorResponse.ok) {
+              const authorData = await authorResponse.json()
+              authorInfo = authorData.authorInfo
             }
-            return res.json()
-          }),
+          } catch (error) {
+            console.error("Error getting author information:", error)
+            // Don't throw the error, just continue without author info
+          }
 
-          // Analyze article with Perplexity
-          fetch("/api/perspectives", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ 
-              mode: "news",
-              articleContent: articleData.content 
-            }),
-          }).then(res => {
-            if (!res.ok) throw new Error("Failed to analyze article")
-            return res.json()
-          }),
-
-          // Get author information
-          fetch("/api/author", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ 
-              articleContent: articleData.content 
-            }),
-          }).then(res => {
-            if (!res.ok) throw new Error("Failed to get author information")
-            return res.json()
+          // Update state with all results
+          setArticleData({
+            title: articleData.title,
+            content: formattedArticle.content,
+            authorInfo: authorInfo
           })
-        ])
+          setPerspectives(analysisResponse.perspectives)
+          setShowSpectrum(true)
 
-        // Update state with all results
-        setArticleData({
-          title: articleData.title,
-          content: formattedArticle.content,
-          authorInfo: authorResponse.authorInfo
-        })
-        setPerspectives(analysisResponse.perspectives)
-        setShowSpectrum(true)
+        } catch (error) {
+          console.error("Error processing article:", error)
+          throw new Error("Failed to process article. Please try again.")
+        }
 
       } else {
         // Regular search mode
@@ -360,7 +373,7 @@ export default function ChatInterface() {
                         <div className="p-4 flex items-start space-x-3">
                           <Link className="h-5 w-5 text-red-400 group-hover:text-red-300 transition-colors" />
                           <p className="text-sm text-neutral-300 group-hover:text-neutral-200">
-                          What to expect after South Korea’s impeached president was indicted on rebellion charges
+                          What to expect after South Korea's impeached president was indicted on rebellion charges
                           </p>
                         </div>
                       </Card>

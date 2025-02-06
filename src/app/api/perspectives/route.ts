@@ -1,132 +1,145 @@
 import { NextResponse } from "next/server"
 
+const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY
+const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
+
 interface PerplexityResponse {
   choices: [{
     message: {
       content: string
     }
   }]
+}
+
+type ViewpointType = "progressive" | "moderate" | "conservative"
+
+interface Viewpoint {
+  summary: string
+  arguments: {
+    summary: string
+    detail: string
+  }[]
   citations?: {
-    url?: string
     title: string
+    url: string
     snippet?: string
   }[]
 }
 
-interface Argument {
-  summary: string
-  detail: string
-}
-
-interface ParsedResponse {
-  title: string
-  description: string
-  arguments: Argument[]
-  citations?: {
-    url?: string
-    title: string
-  }[]
-}
-
-async function getViewpoint(query: string, viewpoint: string = "moderate") {
+async function getViewpoint(prompt: string, perspective: ViewpointType): Promise<Viewpoint> {
   try {
-    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+    const systemMessage = `You are an expert at analyzing topics from a ${perspective} perspective. 
+    Your task is to provide a balanced and factual analysis from this viewpoint.
+    
+    Format your response in exactly this JSON structure:
+    {
+      "summary": "A concise overview of the ${perspective} perspective",
+      "arguments": [
+        {
+          "summary": "First main point",
+          "detail": "Detailed explanation of the first point"
+        },
+        {
+          "summary": "Second main point",
+          "detail": "Detailed explanation of the second point"
+        }
+      ],
+      "citations": [
+        {
+          "title": "Source Title",
+          "url": "https://source-url.com",
+          "snippet": "Optional relevant quote or context from the source"
+        }
+      ]
+    }
+    
+    Guidelines:
+    1. Be objective and factual
+    2. Avoid extreme or inflammatory language
+    3. Focus on mainstream ${perspective} viewpoints
+    4. Support arguments with reasoning
+    5. Keep the summary under 100 words
+    6. Provide 2-3 main arguments
+    7. Include relevant sources with proper citations
+    8. IMPORTANT: Ensure your response is valid JSON
+    9. For each argument, try to provide at least one credible source
+    10. Sources should be real and verifiable`
+
+    const response = await fetch(PERPLEXITY_API_URL, {
       method: "POST",
       headers: {
-        "Accept": "application/json",
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`
       },
       body: JSON.stringify({
         model: "sonar-pro",
         messages: [
-          {
-            role: "system",
-            content: `You are an expert at analyzing topics from different perspectives. For the given query, provide a ${viewpoint} perspective with supporting evidence.
-
-Format the response as JSON with this structure:
-{
-  "title": "Brief topic title",
-  "description": "2-3 sentence overview",
-  "arguments": [
-    {
-      "summary": "5-7 word summary of the point",
-      "detail": "2-3 sentence explanation with citation [1]"
-    }
-  ],
-  "citations": [
-    {
-      "url": "source URL",
-      "title": "source title"
-    }
-  ]
-}`
-          },
-          {
-            role: "user",
-            content: query
-          }
-        ],
-        temperature: 0.2,
-        max_tokens: 1024,
-        presence_penalty: 0,
-        frequency_penalty: 0.5,
-        return_citations: true
-      }),
+          { role: "system", content: systemMessage },
+          { role: "user", content: prompt }
+        ]
+      })
     })
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error("Perplexity API error details:", errorData)
-      throw new Error(`Perplexity API error: ${response.statusText}`)
+      throw new Error(`Perplexity API request failed with status ${response.status}`)
     }
 
-    const data = (await response.json()) as PerplexityResponse
-    console.log("Raw API response:", JSON.stringify(data, null, 2))
-    
+    const data = await response.json()
     const content = data.choices[0].message.content
-    console.log("Raw content string:", content)
-    
+
     try {
-      // Try to clean the content string if needed
-      const cleanContent = content.trim()
-      console.log("Attempting to parse:", cleanContent)
-      
-      const parsedData = JSON.parse(cleanContent) as ParsedResponse
-      console.log("Successfully parsed data:", JSON.stringify(parsedData, null, 2))
-      
-      // Validate the parsed data has the required structure
-      if (!parsedData.title || !parsedData.description || !Array.isArray(parsedData.arguments)) {
-        console.error("Invalid data structure:", parsedData)
-        throw new Error("Missing required fields in response")
+      // Clean the response to ensure it's valid JSON
+      const cleanedContent = content.replace(/```json\s*|\s*```/g, '').trim()
+      const parsedContent = JSON.parse(cleanedContent)
+
+      // Validate the structure
+      if (!parsedContent.summary || !Array.isArray(parsedContent.arguments)) {
+        throw new Error("Response missing required fields")
       }
-      
-      // Ensure the response has the required structure
-      return {
-        title: parsedData.title,
-        description: parsedData.description,
-        arguments: parsedData.arguments.map((arg: Argument) => ({
-          summary: arg.summary || "",
-          detail: arg.detail || ""
-        })),
-        citations: [
-          ...(parsedData.citations || []),
-          ...(data.citations || [])
-        ].filter(citation => citation.title || citation.url),
-        viewpoint
+
+      // Ensure citations is always an array
+      if (!Array.isArray(parsedContent.citations)) {
+        parsedContent.citations = []
       }
-    } catch (error: unknown) {
+
+      // Filter out invalid citations
+      parsedContent.citations = parsedContent.citations.filter(
+        (citation: any) => citation && citation.title && citation.url
+      )
+
+      return parsedContent
+    } catch (error) {
       console.error('Error parsing JSON response:', error)
       console.error('Content that failed to parse:', content)
-      throw new Error(`Invalid response format from API: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      
+      // Attempt to extract information from non-JSON response
+      const fallbackResponse: Viewpoint = {
+        summary: "Unable to parse perspective",
+        arguments: [
+          {
+            summary: "Error Processing Response",
+            detail: "The system encountered an error while processing this perspective. Please try again."
+          }
+        ],
+        citations: []
+      }
+
+      return fallbackResponse
     }
   } catch (error: unknown) {
     console.error("Error in getViewpoint:", error)
-    throw error instanceof Error ? error : new Error('Unknown error in getViewpoint')
+    throw new Error(error instanceof Error ? error.message : "Failed to get viewpoint")
   }
 }
 
 export async function POST(req: Request) {
+  if (!PERPLEXITY_API_KEY) {
+    return NextResponse.json(
+      { error: "Perplexity API key not configured" },
+      { status: 500 }
+    )
+  }
+
   try {
     const { query, mode, articleContent } = await req.json()
 
@@ -171,11 +184,10 @@ export async function POST(req: Request) {
         { status: 500 }
       )
     }
-
   } catch (error: unknown) {
-    console.error("Error in perspectives route:", error)
+    console.error("Error in POST handler:", error)
     return NextResponse.json(
-      { error: "Failed to analyze content" },
+      { error: "Failed to process request" },
       { status: 500 }
     )
   }

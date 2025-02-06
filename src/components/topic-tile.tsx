@@ -102,7 +102,6 @@ export function TopicTile({ topic, selectedViewpoint }: TopicTileProps) {
                   }`}
                 />
               </button>
-
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
@@ -124,7 +123,7 @@ export function TopicTile({ topic, selectedViewpoint }: TopicTileProps) {
                           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-neutral-400 transition-colors ${pillStyles[selectedViewpoint]}`}
                         >
                           <span className="truncate max-w-[300px]">
-                            {citation.title || citation.url}
+                            [{citationIndex! + 1}] {citation.title || citation.url}
                           </span>
                           <ExternalLink className="h-3 w-3 opacity-50 group-hover:opacity-100 transition-opacity" />
                         </a>
@@ -138,9 +137,15 @@ export function TopicTile({ topic, selectedViewpoint }: TopicTileProps) {
         })}
       </div>
 
+      {/* Sources Section */}
       {topic.citations && topic.citations.length > 0 && (
-        <div className="mt-4 border-t border-neutral-800 pt-4">
-          <h4 className="text-sm font-medium text-neutral-400 mb-3">All Sources</h4>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="mt-6 pt-4 border-t border-neutral-800"
+        >
+          <h4 className="text-sm font-medium text-neutral-400 mb-3">Sources</h4>
           <div className="flex flex-wrap gap-2">
             {topic.citations.map((citation, index) => (
               citation.url && (
@@ -149,9 +154,9 @@ export function TopicTile({ topic, selectedViewpoint }: TopicTileProps) {
                   href={citation.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`group flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs text-neutral-300 transition-colors ${pillStyles[selectedViewpoint]}`}
+                  className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs text-neutral-300 transition-colors ${pillStyles[selectedViewpoint]}`}
                 >
-                  <span className="truncate max-w-[200px]">
+                  <span className="truncate max-w-[300px]">
                     [{index + 1}] {citation.title || citation.url}
                   </span>
                   <ExternalLink className="h-3 w-3 opacity-50 group-hover:opacity-100 transition-opacity" />
@@ -159,7 +164,7 @@ export function TopicTile({ topic, selectedViewpoint }: TopicTileProps) {
               )
             ))}
           </div>
-        </div>
+        </motion.div>
       )}
     </motion.div>
   )
