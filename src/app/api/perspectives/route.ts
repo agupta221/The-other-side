@@ -29,7 +29,7 @@ interface Viewpoint {
 async function getViewpoint(prompt: string, perspective: ViewpointType): Promise<Viewpoint> {
   try {
     const systemMessage = `You are an expert at analyzing topics from a ${perspective} perspective. 
-    Your task is to provide a balanced and factual analysis from this viewpoint.
+    Your task is to provide a balanced and factual analysis from this viewpoint. Focus on really understanding the root cause of the topic and provide a detailed analysis.
     
     Format your response in exactly this JSON structure:
     {
@@ -59,11 +59,13 @@ async function getViewpoint(prompt: string, perspective: ViewpointType): Promise
     3. Focus on mainstream ${perspective} viewpoints
     4. Support arguments with reasoning
     5. Keep the summary under 100 words
-    6. Provide 2-3 main arguments
-    7. Include relevant sources with proper citations
-    8. IMPORTANT: Ensure your response is valid JSON
-    9. For each argument, try to provide at least one credible source
-    10. Sources should be real and verifiable`
+    6. Provide atleast 3-4 main arguments but where appropriate provide more
+    7. The arguments you provide should be extremely detailed, nuanced and thoughtful 
+    8. For each detailed argument, provide verifiable examples, data, quotes, etc. 
+    9. Include relevant sources with proper citations
+    10. IMPORTANT: Ensure your response is valid JSON
+    11. For each argument, try to provide at least one credible source
+    12. Sources should be real and verifiable`
 
     const response = await fetch(PERPLEXITY_API_URL, {
       method: "POST",

@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Send, ExternalLink, ChevronRight, Loader2, ChevronDown } from "lucide-react"
+import { Send, ExternalLink, ChevronRight, Loader2, ChevronDown, ArrowDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import DOMPurify from 'isomorphic-dompurify'
 
 interface Message {
   role: "user" | "assistant"
@@ -20,6 +21,16 @@ interface ArticleChatProps {
   articleTitle: string
 }
 
+// Helper function to sanitize and format HTML
+const formatMessageContent = (content: string) => {
+  // Sanitize the HTML to prevent XSS
+  const sanitizedHtml = DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: ['p', 'ul', 'ol', 'li', 'strong', 'blockquote', 'br'],
+    ALLOWED_ATTR: []
+  })
+  return sanitizedHtml
+}
+
 export function ArticleChat({ articleContent, articleTitle }: ArticleChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -30,14 +41,45 @@ export function ArticleChat({ articleContent, articleTitle }: ArticleChatProps) 
   const [isStreamStarted, setIsStreamStarted] = useState(false)
   const [isFollowUpsExpanded, setIsFollowUpsExpanded] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+  const [showScrollIndicator, setShowScrollIndicator] = useState(false)
 
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  // Check if we need to show scroll indicator
+  const checkScrollIndicator = () => {
+    if (chatContainerRef.current) {
+      const { scrollHeight, scrollTop, clientHeight } = chatContainerRef.current
+      const isScrollable = scrollHeight > clientHeight
+      const isScrolledToBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 10
+      setShowScrollIndicator(isScrollable && !isScrolledToBottom)
+    }
   }
 
+  // Only scroll to bottom when explicitly called
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    setShowScrollIndicator(false)
+  }
+
+  // Add scroll event listener
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, currentResponse])
+    const container = chatContainerRef.current
+    if (container) {
+      container.addEventListener('scroll', checkScrollIndicator)
+      return () => container.removeEventListener('scroll', checkScrollIndicator)
+    }
+  }, [])
+
+  // Check scroll indicator when content changes
+  useEffect(() => {
+    checkScrollIndicator()
+  }, [currentResponse])
+
+  // Only auto-scroll on new messages or when streaming is complete
+  useEffect(() => {
+    if (messages.length > 0 && !currentResponse) {
+      scrollToBottom()
+    }
+  }, [messages])
 
   const handleSubmit = async () => {
     if (!input.trim() || isLoading) return
@@ -137,8 +179,10 @@ export function ArticleChat({ articleContent, articleTitle }: ArticleChatProps) 
 
   return (
     <div className="flex flex-col h-full">
-      {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto mb-4 space-y-6 p-4">
+      <div 
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto mb-4 space-y-6 p-4 relative"
+      >
         <AnimatePresence mode="popLayout">
           {messages.map((message, index) => (
             <motion.div
@@ -167,9 +211,12 @@ export function ArticleChat({ articleContent, articleTitle }: ArticleChatProps) 
                     message.role === "user" ? "bg-red-600" : "bg-neutral-800"
                   }`} 
                 />
-                <div className="relative prose prose-sm prose-invert max-w-none [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:mt-2 [&>ol]:mt-2 [&>ul>li]:mt-2 [&>ol>li]:mt-2 [&>ul]:list-disc [&>ol]:list-decimal [&>ul]:pl-4 [&>ol]:pl-4">
-                  {message.content}
-                </div>
+                <div 
+                  className="relative prose prose-sm prose-invert max-w-none [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:mt-2 [&>ol]:mt-2 [&>ul>li]:mt-2 [&>ol>li]:mt-2 [&>ul]:list-disc [&>ol]:list-decimal [&>ul]:pl-4 [&>ol]:pl-4 [&>blockquote]:pl-4 [&>blockquote]:border-l-2 [&>blockquote]:border-neutral-600 [&>blockquote]:italic [&>blockquote]:my-4"
+                  dangerouslySetInnerHTML={{ 
+                    __html: formatMessageContent(message.content)
+                  }}
+                />
                 {message.sources && message.sources.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2 relative">
                     {message.sources.map((source, idx) => (
@@ -223,14 +270,32 @@ export function ArticleChat({ articleContent, articleTitle }: ArticleChatProps) 
               </div>
               <div className="relative max-w-[80%] rounded-2xl p-4 bg-neutral-800 text-neutral-200">
                 <div className="absolute top-4 -left-2 w-4 h-4 transform rotate-45 bg-neutral-800" />
-                <div className="relative prose prose-sm prose-invert max-w-none [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:mt-2 [&>ol]:mt-2 [&>ul>li]:mt-2 [&>ol>li]:mt-2 [&>ul]:list-disc [&>ol]:list-decimal [&>ul]:pl-4 [&>ol]:pl-4">
-                  {currentResponse}
-                </div>
+                <div 
+                  className="relative prose prose-sm prose-invert max-w-none [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:mt-2 [&>ol]:mt-2 [&>ul>li]:mt-2 [&>ol>li]:mt-2 [&>ul]:list-disc [&>ol]:list-decimal [&>ul]:pl-4 [&>ol]:pl-4 [&>blockquote]:pl-4 [&>blockquote]:border-l-2 [&>blockquote]:border-neutral-600 [&>blockquote]:italic [&>blockquote]:my-4"
+                  dangerouslySetInnerHTML={{ 
+                    __html: formatMessageContent(currentResponse)
+                  }}
+                />
               </div>
             </motion.div>
           )}
         </AnimatePresence>
         <div ref={chatEndRef} />
+
+        {/* Scroll Indicator */}
+        <AnimatePresence>
+          {showScrollIndicator && (
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              onClick={scrollToBottom}
+              className="fixed top-80 right-8 bg-red-600 hover:bg-red-500 transition-colors rounded-full p-3 shadow-lg shadow-red-500/20 z-50"
+            >
+              <ArrowDown className="h-5 w-5 text-white" />
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Follow-up Queries */}

@@ -156,14 +156,15 @@ export async function POST(req: Request) {
         1. Be concise and accurate
         2. Use information directly from the article when possible otherwise search other sources to provide a nuanced perspective on the question
         3. If you need to make assumptions or provide additional context, clearly state so
-        4. Format your response with proper spacing and structure:
-           - Use double line breaks between paragraphs
-           - For lists or bullet points, use proper markdown formatting:
-             * Use numbers (1., 2., etc.) for sequential items
-             * Use hyphens (-) or asterisks (*) for bullet points
-             * Add a line break before and after lists
-           - Keep sentences properly spaced
-           - Use appropriate formatting for emphasis when needed
+        4. Format your response using HTML tags for proper structure:
+           - Wrap paragraphs in <p> tags
+           - Use <ul> and <li> for unordered lists
+           - Use <ol> and <li> for ordered lists
+           - Use <strong> for emphasis
+           - Use <blockquote> for quotes
+           - Add proper spacing between elements
+           - Use <br /> for line breaks only when necessary
+           - Ensure all HTML tags are properly closed
         
         Previous conversation context:
         ${messages
